@@ -1,0 +1,323 @@
+---
+title: "Evaluación_ADI_2025"
+author: "Victoria Paca"
+date: "2026-03-05"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. INTRODUCCIÓN
+
+En esta evaluación se desarrolla un ejercicio de Analítica de Datos aplicada a la gestión operativa de servicios, utilizando R y RStudio.
+
+La base de datos utilizada corresponde a un Centro de Atención al Cliente (Call Center) de una empresa de servicios de televisión satelital, donde se registran indicadores operativos asociados a la atención de llamadas y la calidad del servicio.
+
+Para cada jornada operativa se registran las siguientes variables:
+
+-   **Equipo de atención**: (E1, E2, E3)
+-   **Turno de operación**: (Mañana, Tarde, Noche)
+-   Número de **llamadas atendidas** por hora
+-   **Tiempo promedio** de atención por llamada (minutos)
+-   Número de **reclamos o incidencias reportadas** por los clientes
+-   Número de **interrupciones o caídas del sistema** durante el turno
+-   **Indicador categórico de satisfacción del servicio**: Baja, Media, Alta
+
+El objetivo de la evaluación es aplicar el proceso de analítica de datos es:
+
+-   Comprender el problema.
+-   Preparar y explorar los datos.
+-   Analizar relaciones entre variables.
+-   Construir un modelo simple (árbol de decisión).
+-   Interpretar resultados y proponer conclusiones operativas.
+
+## 2. Creación y Carga del Dataset
+
+### 2.1. Carga de las Librerías
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(psych)
+library(party)
+```
+
+### 2.2. Carga y Descripción del Dataset
+
+El archivo data/dataset_callcenter_300.csv es el que contiene la información del servicio, se encuantran registradas las variables críticas del proceso y de calidad.
+
+```{r}
+dataset_callcenter <- read.csv("dataset_callcenter_300.csv")
+
+head(dataset_callcenter)
+```
+
+```{r}
+str(dataset_callcenter)
+```
+
+```{r dimensiones}
+dim(dataset_callcenter)
+
+names(dataset_callcenter)
+```
+
+```{r}
+summary(dataset_callcenter)
+```
+
+## 3. Análisis Exploratorio de Datos
+
+El análisis exploratorio de Datos constituye una etapa fundamental del proceso, cuyo objetivo es comprender la estructura, distribución y características principales del conjunto de datos.
+
+```{r}
+dataset_callcenter$equipo_atencion <- as.factor(dataset_callcenter$equipo_atencion)
+dataset_callcenter$turno_operacion <- as.factor(dataset_callcenter$turno_operacion)
+dataset_callcenter$satisfaccion_servicio <- as.factor(dataset_callcenter$satisfaccion_servicio)
+
+```
+
+### 3.1. Exploración de Datos
+
+Se realiza un análisis exploratorio del dataset del centro de atención al cliente para identificar patrones iniciales, posibles relaciones entre variables y comportamientos que puedan influir en el nivel de satisfacción del servicio. Esta etapa permitirá orientar el análisis posterior y la construcción del modelo de decisión.
+
+#### Estadísticos Descriptivos Univariados
+
+```{r}
+describe(dataset_callcenter)
+```
+
+#### Distribución del Nivel de Calidad
+
+```{r tabla-calidad}
+table(dataset_callcenter$satisfaccion_servicio)
+prop.table(table(dataset_callcenter$satisfaccion_servicio))
+```
+
+### 3.2. Histográmas
+
+```{r}
+ggplot(dataset_callcenter, aes(x = llamadas_hora)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
+  labs(title = "Distribución de llamadas atendidas por hora",
+       x = "Llamadas por hora",
+       y = "Frecuencia")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(x = tiempo_promedio_atencion)) +
+  geom_histogram(binwidth = 0.5, fill = "darkgreen", color = "blue") +
+  labs(title = "Distribución del tiempo promedio de atención",
+       x = "Tiempo promedio (minutos)",
+       y = "Frecuencia")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(x = reclamos_clientes)) +
+  geom_histogram(binwidth = 1, fill = "orange", color = "black") +
+  labs(title = "Distribución de reclamos de clientes",
+       x = "Número de reclamos",
+       y = "Frecuencia")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(x = interrupciones_sistema)) +
+  geom_histogram(binwidth = 1, fill = "white", color = "black") +
+  labs(title = "Distribución de interrupciones del sistema",
+       x = "Número de interrupciones",
+       y = "Frecuencia")
+```
+
+### 3.3. Boxplots por Variable
+
+```{r}
+ggplot(dataset_callcenter, aes(y = llamadas_hora)) +
+  geom_boxplot(fill = "blue") +
+  labs(title = "Boxplot de llamadas atendidas por hora", y = "Llamadas por hora")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(y = tiempo_promedio_atencion)) +
+  geom_boxplot(fill = "green") +
+  labs(title = "Boxplot del tiempo promedio de atención",
+       y = "Tiempo promedio (minutos)")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(y = tiempo_promedio_atencion)) +
+  geom_boxplot(fill = "red") +
+  labs(title = "Boxplot del tiempo promedio de atención",
+       y = "Tiempo promedio (minutos)")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(y = reclamos_clientes)) +
+  geom_boxplot(fill = "orange") +
+  labs(title = "Boxplot de reclamos de clientes",
+       y = "Número de reclamos")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(y = interrupciones_sistema)) +
+  geom_boxplot(fill = "lightyellow") +
+  labs(title = "Boxplot de interrupciones del sistema",
+       y = "Número de interrupciones")
+```
+
+### 3.4. Calidad por Turno
+
+```{r barras-calidad-turno, fig.height=4.5, fig.width=7}
+tabla_cal_turno <- table(dataset_callcenter$turno, dataset_callcenter$satisfaccion_servicio)
+tabla_cal_turno
+
+barplot(t(tabla_cal_turno),
+        beside = TRUE,
+        legend = TRUE,
+        main   = "Distribución de calidad por turno",
+        xlab   = "Turno",
+        ylab   = "Frecuencia")
+```
+
+```{r}
+ggplot(dataset_callcenter, aes(x = turno_operacion, y = llamadas_hora)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Llamadas por hora según turno de operación",
+       x = "Turno",
+       y = "Llamadas por hora")
+```
+
+## 4. Análisis Multivariado
+
+```{r}
+vars_numericas <- dataset_callcenter %>%
+  dplyr::select(llamadas_hora, tiempo_promedio_atencion, reclamos_clientes, interrupciones_sistema)
+```
+
+### 4.1. Matriz de Correlación
+
+```{r matriz-correlacion}
+cor(vars_numericas)
+```
+
+### 4.2. Gráficos de dispersión
+
+```{r dispersion-llamadas-reclamos, fig.height=4.5, fig.width=7}
+plot(dataset_callcenter$llamadas_hora, dataset_callcenter$reclamos_clientes,
+     xlab = "Llamadas por hora",
+     ylab = "Número de reclamos",
+     main = "Llamadas atendidas vs Reclamos de clientes")
+```
+
+```{r dispersion-tiempo-reclamos, fig.height=4.5, fig.width=7}
+plot(dataset_callcenter$tiempo_promedio_atencion, dataset_callcenter$reclamos_clientes,
+     xlab = "Tiempo promedio de atención (minutos)",
+     ylab = "Número de reclamos",
+     main = "Tiempo de atención vs Reclamos de clientes")
+```
+
+```{r dispersion-llamadas-interrupciones, fig.height=4.5, fig.width=7}
+plot(dataset_callcenter$llamadas_hora, dataset_callcenter$interrupciones_sistema,
+     xlab = "Llamadas por hora",
+     ylab = "Número de interrupciones del sistema",
+     main = "Llamadas atendidas vs Interrupciones del sistema")
+
+```
+
+```{r dispersion-tiempo-interrupciones, fig.height=4.5, fig.width=7}
+plot(dataset_callcenter$tiempo_promedio_atencion, dataset_callcenter$interrupciones_sistema,
+     xlab = "Tiempo promedio de atención (minutos)",
+     ylab = "Número de interrupciones del sistema",
+     main = "Tiempo de atención vs Interrupciones del sistema")
+```
+
+## 5. Modelo de analítica de datos (Árbol de decisión)
+
+Se construye un modelo de árbol de decisión con el objetivo de identificar qué variables operativas influyen en el nivel de satisfacción del servicio. Este modelo permite generar reglas de decisión que facilitan la interpretación de patrones y la toma de decisiones operativas basada en datos.
+
+### 5.1. Conjunto de entrenamiento y prueba
+
+```{r}
+set.seed(2025)
+
+ind <- sample(2,
+              size    = nrow(dataset_callcenter),
+              replace = TRUE,
+              prob    = c(0.7, 0.3))
+
+trainData <- dataset_callcenter[ind == 1, ]
+testData  <- dataset_callcenter[ind == 2, ]
+
+nrow(trainData); nrow(testData)
+```
+
+### 5.2. Entrenamiento
+
+```{r entrenar-arbol}
+formula_arbol <- satisfaccion_servicio ~ llamadas_hora + tiempo_promedio_atencion +
+                                        reclamos_clientes + interrupciones_sistema +
+                                        equipo_atencion + turno_operacion
+
+arbol_satisfaccion <- ctree(formula_arbol, data = trainData)
+
+arbol_satisfaccion
+```
+
+### 5.3. Evaluación del Entrenamiento
+
+```{r matriz-confusion-train}
+pred_train <- predict(arbol_satisfaccion)
+tabla_train <- table(Predicho = pred_train, Real = trainData$satisfaccion_servicio)
+tabla_train
+```
+
+```{r}
+acc_train <- sum(diag(tabla_train)) / sum(tabla_train)
+acc_train
+```
+
+### 5.4. Evaluación en datos de prueba
+
+```{r matriz-confusion-test}
+pred_test <- predict(arbol_satisfaccion, newdata = testData)
+tabla_test <- table(Predicho = pred_test, Real = testData$satisfaccion_servicio)
+tabla_test
+```
+
+```{r}
+acc_test <- sum(diag(tabla_test)) / sum(tabla_test)
+acc_test
+```
+
+### 5.5. Gráfico del Árbol de decisión
+
+```{r plot-arbol, fig.height=6, fig.width=8}
+plot(arbol_satisfaccion)
+```
+
+## 6. Interpretación de resultados y conclusiones
+
+### 6.1. Interpretación de Resultados
+
+El análisis exploratorio permitió identificar que el comportamiento y la distribución de las variables operativas del centro de atención, evidencia variaciones en indicadores como llamadas atendidas, tiempos de atención, reclamos e interrupciones del sistema, y de manera directa afectan a la satisfacción del cliente y el número de reclamos.
+
+Los histogramas y boxplots mostraron distribuciones relativamente concentradas y algunas variaciones entre turnos (Mañana, Tarde, Noche) y equipos de atención (E1, E2, E3).
+
+Los gráficos de dispersión y la matriz de correlación sugieren que mayores tiempos de atención y mayores números de interrupciones del sistema tienden a asociarse con un incremento en los reclamos de clientes, lo cual puede afectar negativamente el nivel de satisfacción del servicio.
+
+El modelo de árbol de decisión permitió identificar qué variables como: reclamos de clientes, interrupciones del sistema y tiempo promedio de atención son factores clave para clasificar la satisfacción del servicio (Baja, Media, Alta), es decir, tienen mayor impacto en la satisfacción del servicio.
+
+### 6.2. Conclusiones
+
+-   El análisis exploratorio permitió identificar que el volumen promedio de llamadas atendidas por hora se concentra alrededor de 40–45 llamadas, mientras que el tiempo promedio de atención se sitúa aproximadamente entre 5 y 6 minutos. Estos valores reflejan un nivel operativo relativamente estable en la mayoría de las jornadas analizadas.
+
+-   Los gráficos de dispersión y la matriz de correlación evidencian que incrementos en el tiempo promedio de atención tienden a asociarse con un mayor número de reclamos de clientes. De igual manera, la presencia de interrupciones del sistema muestra una relación directa con el aumento de incidencias reportadas, lo que indica que la estabilidad tecnológica influye significativamente en la calidad del servicio.
+
+-   El modelo de árbol de decisión indica que las variables con mayor influencia en la clasificación del nivel de satisfacción del cliente son: reclamos de clientes, interrupciones del sistema, y el tiempo promedio de atención. Además, los niveles altos de reclamos e interrupciones se asocian directamente con los niveles bajos de satisfacción, mientras que una menor incidencia y tiempos de atención moderados tienden a relacionarse con niveles medios o altos de satisfacción del servicio.
+
+-   El árbol de decisión logra clasificar adecuadamente los niveles de satisfacción tanto en el conjunto de entrenamiento como en el conjunto de prueba, lo que indica que el modelo tiene una capacidad adecuada de generalización y no presenta evidencias significativas de sobreajuste.
+
+-   Las estrategias para lograr una mejora del servicio deberían enfocarse principalmente en: reducir las interrupciones del sistema, optimizar los tiempos promedio de atención, disminuir la frecuencia de reclamos mediante mejoras en la resolución de consultas.
